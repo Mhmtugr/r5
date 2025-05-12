@@ -324,10 +324,11 @@ watch(() => route.path, handleSidebarToggle);
   width: 250px;
   display: flex;
   flex-direction: column;
-  background-color: var(--bg-sidebar);
-  border-right: 1px solid var(--border-color);
+  background-color: var(--primary-color);
+  color: var(--sidebar-text);
+  border-right: 1px solid rgba(0, 0, 0, 0.1);
   z-index: 1000;
-  transition: width 0.3s ease;
+  transition: all 0.3s ease;
   
   &.collapsed {
     width: 70px;
@@ -426,25 +427,23 @@ watch(() => route.path, handleSidebarToggle);
         margin: 0;
         
         .nav-item {
-          margin-bottom: 0.25rem;
-          
-          .nav-link {
+          margin-bottom: 0.25rem;            .nav-link {
             display: flex;
             align-items: center;
             padding: 10px 1rem;
-            color: var(--text-secondary);
+            color: var(--sidebar-text);
             text-decoration: none;
             border-radius: 0.25rem;
             margin: 0 0.5rem;
             
             &:hover {
-              background-color: var(--bg-hover);
-              color: var(--text-primary);
+              background-color: var(--sidebar-hover-bg);
+              color: var(--sidebar-text-active);
             }
             
             &.active {
-              background-color: var(--primary-light);
-              color: var(--primary);
+              background-color: rgba(255, 255, 255, 0.1);
+              color: var(--sidebar-text-active);
               font-weight: 500;
             }
             

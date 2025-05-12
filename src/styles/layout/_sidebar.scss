@@ -1,14 +1,14 @@
 @use "../base/variables" as vars;
 
 // Sidebar stilleri (ornekindex.html'den taşındı)
-.sidebar {
-  background-color: var(--bg-sidebar); // CSS değişkeni kullanıldı
+.app-sidebar {
+  background-color: var(--primary-color); // CSS değişkeni kullanıldı
   color: var(--sidebar-text); // CSS değişkeni kullanıldı
   height: 100vh;
   position: fixed;
-  padding-top: 20px;
+  padding-top: 0;
   width: vars.$sidebar-width; // SASS değişkeni kullanıldı
-  transition: width 0.3s ease; // Geçiş eklendi
+  transition: all 0.3s ease; // Geçiş eklendi
 
   .nav-link {
     color: var(--sidebar-text);
@@ -30,17 +30,35 @@
       text-align: center;
     }
   }
-
-  // Çöktüğünde stiller (örnek)
+  // Çöktüğünde stiller
   &.collapsed {
     width: vars.$sidebar-collapsed-width;
 
-    .nav-link span {
-      display: none; // Metni gizle
+    .nav-text,
+    .dropdown-icon,
+    .nav-badge {
+      display: none; // Metni ve diğer elemanları gizle
     }
 
-    .sidebar-footer p {
-        display: none; // Alt bilgiyi gizle
+    .nav-link {
+      justify-content: center;
+      padding: 10px;
+      
+      .nav-icon {
+        margin-right: 0;
+      }
+    }
+
+    .sidebar-header {
+      justify-content: center;
+      
+      .logo span {
+        display: none;
+      }
+    }
+
+    .sidebar-footer .user-info {
+      display: none; // Kullanıcı bilgisini gizle
     }
   }
 

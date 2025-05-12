@@ -1,14 +1,16 @@
 @use "../base/variables" as vars;
 
 // Ana düzen stilleri
-.main-layout {
+.app-container {
   display: flex;
   min-height: 100vh;
+  overflow: hidden;
+  background-color: var(--bg-content, #f5f7fa);
   
   .main-content {
     margin-left: vars.$sidebar-width;
     width: calc(100% - #{vars.$sidebar-width});
-    transition: all 0.3s;
+    transition: all 0.3s ease;
     min-height: 100vh;
     display: flex;
     flex-direction: column;
@@ -44,10 +46,20 @@
 
 // Duyarlı ayarlar
 @media (max-width: 992px) {
-  .main-layout {
+  .app-container {
     .main-content {
       margin-left: 0 !important;
       width: 100% !important;
+    }
+    
+    &:not(.sidebar-collapsed) .app-sidebar {
+      transform: translateX(-100%);
+    }
+    
+    &.sidebar-collapsed .app-sidebar {
+      transform: translateX(0);
+      z-index: 1050;
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
     }
   }
 }

@@ -1,6 +1,6 @@
-<template>
-  <div class="app-container" :class="{ 'sidebar-collapsed': isSidebarCollapsed, 'dark-mode': isDarkMode }">
-    <AppSidebar :is-collapsed="isSidebarCollapsed" />
+<template>  <div class="app-container" :class="{ 'sidebar-collapsed': isSidebarCollapsed, 'dark-mode': isDarkMode }">
+    <AppSidebar :is-collapsed="isSidebarCollapsed" @toggle-sidebar="toggleSidebar" />
+    <div v-if="!isSidebarCollapsed && window.innerWidth < 992" class="main-overlay" @click="toggleSidebar"></div>
     <div class="main-content">
       <AppHeader 
         :username="username" 
@@ -35,7 +35,7 @@
 </template>
 
 <script setup>
-import { ref, provide, computed, onMounted, watch } from 'vue';
+import { ref, provide, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { storeToRefs } from 'pinia';
 import { useAuthStore } from '@/store/auth';
@@ -64,8 +64,13 @@ const username = computed(() => {
 // Dark mode state
 const isDarkMode = ref(localStorage.getItem('darkMode') === 'true');
 
-// Sidebar durumu
-const isSidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true');
+// Sidebar durumu - mobilde otomatik kapalı başla
+const isSidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true' || window.innerWidth < 992);
+// Mobil için pencere boyutunu takip et
+const windowSize = ref({
+  width: window.innerWidth,
+  height: window.innerHeight
+});
 
 // Modal'ı kapat
 const closeAIChatModal = () => {
@@ -110,6 +115,19 @@ onMounted(() => {
   // Sayfa yüklenirken dark mode ayarı
   document.body.classList.toggle('dark-mode', isDarkMode.value);
   
+  // Window resize olayını izle
+  window.addEventListener('resize', () => {
+    windowSize.value = {
+      width: window.innerWidth,
+      height: window.innerHeight
+    };
+    
+    // Ekran boyutu değiştiğinde sidebar durumunu kontrol et
+    if (window.innerWidth < 992) {
+      isSidebarCollapsed.value = true;
+    }
+  });
+  
   // Auth durumunu kontrol et, değilse ve development modunda ise otomatik login
   if (!isAuthenticated.value) {
     console.log('Otomatik giriş kontrolü yapılıyor...');
@@ -133,6 +151,16 @@ watch(
     }
   }
 );
+
+// Event listener'ları temizle
+onUnmounted(() => {
+  window.removeEventListener('resize', () => {
+    windowSize.value = {
+      width: window.innerWidth,
+      height: window.innerHeight
+    };
+  });
+});
 </script>
 
 <style lang="scss">
