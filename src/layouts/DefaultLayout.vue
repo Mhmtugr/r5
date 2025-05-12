@@ -1,6 +1,13 @@
 <template>
-  <div class="app-container" :class="{ 'sidebar-collapsed': isSidebarCollapsed, 'dark-mode': isDarkMode }">
+  <div class="app-container" :class="[
+    { 'sidebar-collapsed': isSidebarCollapsed },
+    { 'dark-mode': isDarkMode },
+    { 'mobile-view': windowSize.width < 992 }
+  ]">
+    <!-- Sidebar bileşeni -->
     <AppSidebar :is-collapsed="isSidebarCollapsed" @toggle-sidebar="toggleSidebar" />
+    
+    <!-- Mobil görünümde sidebar açıkken arkaplanı karartan overlay -->
     <div v-if="!isSidebarCollapsed && windowSize.width < 992" class="main-overlay" @click="toggleSidebar"></div>
     <div class="main-content">
       <AppHeader 
@@ -71,12 +78,13 @@ const windowSize = ref({
   height: typeof window !== 'undefined' ? window.innerHeight : 768
 });
 
-// Sidebar durumu - masaüstünde localStorage'dan, mobilde her zaman başlangıçta kapalı
+// Sidebar durumu - masaüstünde her zaman açık başla, mobilde kapalı başla
 const getInitialSidebarState = () => {
-  if (windowSize.value.width < 992) {
-    return true; // Mobilde her zaman başlangıçta kapalı (collapsed=true)
+  if (typeof window !== 'undefined' && window.innerWidth < 992) {
+    return true; // Mobilde kapalı başla (collapsed=true)
   }
-  return localStorage.getItem('sidebarCollapsed') === 'true'; // Masaüstünde kullanıcı tercihi
+  // Masaüstünde her zaman açık başla (false), localStorage'dan okuma yapmayalım
+  return false;
 };
 const isSidebarCollapsed = ref(getInitialSidebarState());
 
@@ -85,13 +93,11 @@ const closeAIChatModal = () => {
   technicalStore.setAIChatModalOpen(false);
 };
 
-// Toggle fonksiyonları
+// Toggle fonksiyonları - basitleştirildi ve her zaman çalışması sağlandı
 const toggleSidebar = () => {
+  // Sidebar'ın gösterilme durumunu tersine çevir
   isSidebarCollapsed.value = !isSidebarCollapsed.value;
-  // Sadece masaüstünde tercihi kaydet
-  if (windowSize.value.width >= 992) {
-    localStorage.setItem('sidebarCollapsed', isSidebarCollapsed.value.toString());
-  }
+  console.log('Sidebar toggled:', isSidebarCollapsed.value ? 'collapsed' : 'expanded');
 };
 
 const toggleDarkMode = () => {

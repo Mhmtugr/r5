@@ -19,8 +19,21 @@ const unreadNotifications = ref(0)
 
 // Bildirim sayısını güncelle
 const updateNotificationCount = () => {
-  // Gerçek uygulamada burada notificationStore'dan alınacak
-  unreadNotifications.value = notificationStore.getUnreadCount || Math.floor(Math.random() * 5)
+  // Okunmamış AI bildirimlerini al
+  if (notificationStore.getUnreadAiNotificationsCount) {
+    unreadNotifications.value = notificationStore.getUnreadAiNotificationsCount.value;
+  } else {
+    // Geriye dönük uyumluluk için elle filtreleme yapalım
+    const aiNotifications = notificationStore.unreadNotifications.filter(
+      notification => notification.type === 'ai' || notification.source === 'ai' || notification.category === 'ai'
+    );
+    unreadNotifications.value = aiNotifications.length;
+  }
+  
+  // Eğer hiç AI bildirimi yoksa ve demo mod aktifse rastgele bildirim sayısı gösterelim
+  if (unreadNotifications.value === 0 && import.meta.env.VITE_USE_DEMO_MODE === 'true') {
+    unreadNotifications.value = Math.floor(Math.random() * 3);
+  }
 }
 
 // Chat modali aç

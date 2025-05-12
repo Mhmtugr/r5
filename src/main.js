@@ -9,9 +9,9 @@ import { createPinia } from 'pinia'
 import App from '@/App.vue'
 import router from '@/router'
 
-// Styles
-import 'bootstrap/dist/css/bootstrap.min.css'
+// Styles - Bootstrap CSS'i en son import ederek öncelik sorunlarını çöz
 import '@/styles/main.scss'
+import 'bootstrap/dist/css/bootstrap.min.css'
 import 'bootstrap-icons/font/bootstrap-icons.css'
 
 // Bootstrap JS
@@ -66,6 +66,22 @@ app.use(router)
 app.config.globalProperties.$eventBus = useEventBus()
 app.config.globalProperties.$apiService = apiService
 app.config.globalProperties.$aiService = aiService
+
+// Yapay Zeka yeteneklerini yükle ve başlat
+router.isReady().then(() => {
+  // İçgörü ve bildirim sistemini başlat (kullanıcı giriş yaptıktan sonra)
+  import('@/store/notification').then(({ useNotificationStore }) => {
+    const notificationStore = useNotificationStore();
+    
+    // Periyodik AI içgörüleri ve bildirimlerini başlat
+    const cleanup = aiService.setupPeriodicInsights(notificationStore);
+    
+    // Sayfa kapatıldığında interval'ları temizle
+    window.addEventListener('beforeunload', cleanup);
+    
+    console.log('🤖 AI Asistan ve periyodik içgörü sistemi başlatıldı');
+  });
+});
 
 // Geliştirme sırasında faydalı konsol mesajları
 if (import.meta.env.DEV) {

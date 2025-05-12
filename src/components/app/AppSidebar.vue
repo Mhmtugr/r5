@@ -3,7 +3,7 @@
     <div class="sidebar-header">
       <div class="logo">
         <img src="@/assets/images/sample-image.jpg" alt="Logo" />
-        <span v-if="!isCollapsed">METS</span>
+        <span v-if="!isCollapsed">MEHMET ETTSys</span>
       </div>
       <button class="btn btn-icon toggle-btn" @click="toggleSidebar">
         <i class="bi" :class="isCollapsed ? 'bi-chevron-right' : 'bi-chevron-left'"></i>
@@ -607,9 +607,11 @@ body.dark-mode {
 
 @media (max-width: 992px) {
   .app-sidebar {
-    width: 250px !important; // Mobil görünümde daraltma yok, tam genişlik
+    width: 100% !important; // Mobil görünümde tam genişlik kullan (max 250px ile sınırla)
+    max-width: 250px !important; 
     transform: translateX(-100%); // Varsayılan olarak gizli
     box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+    z-index: 9999 !important; // En üstte olduğundan emin ol
     
     &.collapsed {
       transform: translateX(0); // Collapsed durumu mobilde gösterme anlamına gelir (ters mantık)
@@ -639,6 +641,16 @@ body.dark-mode {
       .nav-dropdown-items {
         display: block !important;
       }
+    }
+  }
+  
+  // Uygulama dışı stillerle etkileşimi önle
+  html, body {
+    .app-sidebar {
+      position: fixed !important;
+      display: flex !important;
+      height: 100vh !important;
+      overflow-y: auto !important;
     }
   }
 }

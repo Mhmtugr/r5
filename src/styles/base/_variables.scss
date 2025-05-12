@@ -1,5 +1,6 @@
 // Renk Paleti (ornekindex.html'den taşındı ve CSS değişkenleri olarak tanımlandı)
 :root {
+    // Ana temalar
     --primary-color: #2c3e50; // Sidebar background
     --secondary-color: #3498db; // AI Chatbot button
     --success-color: #27ae60;
@@ -7,17 +8,31 @@
     --danger-color: #e74c3c;
     --light-color: #ecf0f1; // Custom table header
     --dark-color: #34495e;
+    
+    // Arkaplan ve içerik
     --bg-content: #f5f7fa; // Main content background
-    --text-primary: #333; // Default text
-    --text-secondary: #555;
-    --text-muted: #6c757d;
-    --border-color: #dee2e6;
     --bg-header: #ffffff; // Header background
     --bg-input: #ffffff;
+    --bg-card: #ffffff;
+    --bg-modal: #ffffff;
+    
+    // Sidebar özel stiller
     --bg-sidebar: var(--primary-color);
     --sidebar-text: rgba(255, 255, 255, 0.8);
     --sidebar-text-active: #ffffff;
     --sidebar-hover-bg: rgba(255, 255, 255, 0.1);
+    --sidebar-active-bg: rgba(255, 255, 255, 0.2);
+    --sidebar-border: rgba(0, 0, 0, 0.1);
+    
+    // Metin renkleri
+    --text-primary: #333; // Default text
+    --text-secondary: #555;
+    --text-muted: #6c757d;
+    --text-light: #ffffff;
+    
+    // Diğer
+    --border-color: #dee2e6;
+    --shadow-color: rgba(0, 0, 0, 0.1);
 
     // Status badge colors from ornekindex.html
     --status-planned-bg: #e3f2fd;

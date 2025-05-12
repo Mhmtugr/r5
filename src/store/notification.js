@@ -24,6 +24,25 @@ export const useNotificationStore = defineStore('notification', () => {
     return notifications.value.filter(notification => notification.priority === 'high' || notification.priority === 'medium');
   });
   
+  // AI ile ilgili bildirimleri filtreleme
+  const aiNotifications = computed(() => {
+    return notifications.value.filter(notification => 
+      notification.type === 'ai' || 
+      notification.source === 'ai' ||
+      notification.category === 'ai'
+    );
+  });
+  
+  // AI bildirimi sayısını alma
+  const getAiNotificationsCount = computed(() => {
+    return aiNotifications.value.length;
+  });
+  
+  // Okunmamış AI bildirimi sayısını alma
+  const getUnreadAiNotificationsCount = computed(() => {
+    return aiNotifications.value.filter(notification => !notification.isRead).length;
+  });
+  
   // Bildirimleri önceliğe göre sıralama
   const sortedNotifications = computed(() => {
     return [...notifications.value].sort((a, b) => {
@@ -178,7 +197,6 @@ export const useNotificationStore = defineStore('notification', () => {
     // Gerçek uygulamada API'ye de bildirim
     // erpService.markAllNotificationsAsRead();
   }
-
   /**
    * Yeni bir bildirim ekle
    * @param {Object} notification - Bildirim nesnesi
@@ -191,6 +209,9 @@ export const useNotificationStore = defineStore('notification', () => {
       content: notification.content,
       department: notification.department || 'Sistem',
       priority: notification.priority || 'medium',
+      type: notification.type || 'general',
+      source: notification.source || 'system',
+      category: notification.category,
       type: notification.type || 'info',
       isRead: notification.isRead || false,
       timestamp: notification.timestamp || new Date(),
@@ -213,6 +234,29 @@ export const useNotificationStore = defineStore('notification', () => {
     
     // Bildirimleri tarihe göre sırala
     notifications.value.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  }
+
+  /**
+   * Yapay zeka ile ilgili yeni bir bildirim ekle
+   * @param {Object} aiNotification - AI bildirim detayları
+   */
+  function addAiNotification(aiNotification) {
+    const notification = {
+      title: aiNotification.title || 'AI Asistanından Mesaj',
+      content: aiNotification.content,
+      department: aiNotification.department || 'Yapay Zeka',
+      priority: aiNotification.priority || 'medium',
+      type: 'ai',
+      source: 'ai',
+      category: aiNotification.category || 'ai-insight',
+      isRead: false,
+      timestamp: new Date()
+    };
+    
+    // Genel bildirim ekleme metodunu kullan
+    addNotification(notification);
+    
+    return notification;
   }
 
   /**
@@ -344,6 +388,9 @@ export const useNotificationStore = defineStore('notification', () => {
     notifications,
     unreadNotifications,
     importantNotifications,
+    aiNotifications,
+    getAiNotificationsCount,
+    getUnreadAiNotificationsCount,
     sortedNotifications,
     unreadCount,
     lastCheck,
@@ -351,6 +398,7 @@ export const useNotificationStore = defineStore('notification', () => {
     markAsRead,
     markAllAsRead,
     addNotification,
+    addAiNotification,
     getUnreadCount,
     requestNotificationPermission,
     initialize

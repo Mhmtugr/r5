@@ -1,10 +1,16 @@
 @use "../base/variables" as vars;
 
-// Ana düzen stilleri
+// Ana düzen stilleri - sidebar görünürlüğü için düzenlendi
+html, body {
+  overflow-x: hidden; // Tam sayfa yatay kaydırmayı önle
+}
+
 .app-container {
+  position: relative;
   display: flex;
   min-height: 100vh;
-  overflow: hidden;
+  width: 100%;
+  overflow-x: hidden; // Yatay scroll'u önle ama dikey scroll'a izin ver
   background-color: var(--bg-content, #f5f7fa);
   
   .main-content {
@@ -14,6 +20,8 @@
     min-height: 100vh;
     display: flex;
     flex-direction: column;
+    position: relative; // İçerik için konum referansı
+    float: right; // Kesinlikle sidebar'ın yanında olmasını sağla
 
     &.sidebar-collapsed {
       margin-left: vars.$sidebar-collapsed-width;

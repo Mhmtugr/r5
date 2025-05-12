@@ -1,22 +1,25 @@
 @use "../base/variables" as vars;
 
-// Sidebar stilleri (ornekindex.html'den taşındı)
+// Sidebar stilleri - Temel stil düzenlemesi ve görünürlük düzeltmesi
 .app-sidebar {
-  background-color: var(--primary-color); // CSS değişkeni kullanıldı
-  color: var(--sidebar-text); // CSS değişkeni kullanıldı
+  background-color: var(--primary-color, #2c3e50); // Fallback değeri de ekleyelim
+  color: var(--sidebar-text, rgba(255, 255, 255, 0.8)); // Fallback değeri ekleyelim
   height: 100vh;
-  position: fixed;
+  position: fixed !important; // Kesinlikle sabit pozisyonda olmalı
   top: 0;
   left: 0;
   bottom: 0;
   padding-top: 0;
   width: vars.$sidebar-width; // SASS değişkeni kullanıldı
-  z-index: 1030; // Önemli: AppHeader gibi diğer elemanların üzerinde olması için
-  display: flex;
+  z-index: 9999 !important; // En yüksek z-index değeri ile üstte tutulmasını sağla
+  display: flex !important; // Görünürlük sağlama için
   flex-direction: column;
   overflow-x: hidden;
   overflow-y: auto;
-  transition: all 0.3s ease; // Geçiş eklendi
+  border-right: 2px solid rgba(0, 0, 0, 0.25); // Daha belirgin kenar çizgisi
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.15); // Daha belirgin gölge
+  transition: all 0.3s ease;
+  visibility: visible !important; // Görünürlüğü zorla
 
   .nav-link {
     color: var(--sidebar-text);
