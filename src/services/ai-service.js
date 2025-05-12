@@ -2,6 +2,7 @@ import { ref, reactive, computed } from 'vue';
 import { useStorage } from '@vueuse/core';
 import axios from 'axios';
 import appConfig from '@/config';
+import { cacheService } from './cache-service';
 
 // Daha kısa bir isim için referans
 const config = appConfig;
@@ -14,23 +15,46 @@ const API_SERVICE_CONFIG = {
     modelName: appConfig.ai?.gemini?.modelName || 'gemini-1.5-pro', // Varsayılan model
   },
   openRouter: {
-    apiKey: appConfig.ai?.openRouter?.apiKey || import.meta.env.VITE_OPENROUTER_API_KEY,
+    apiKey: appConfig.ai?.openRouter?.apiKey || import.meta.env.VITE_OPENROUTER_API_KEY || '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',
     apiUrl: appConfig.ai?.openRouter?.apiUrl || 'https://openrouter.ai/api/v1',
     defaultModels: appConfig.ai?.openRouter?.defaultModels || {
       chat: 'openai/gpt-3.5-turbo',
       instruct: 'google/gemini-flash-1.5', // Örnek bir instruct model
+      technical: 'google/gemini-2.5-pro-exp-03-25', // Güncellenmiş model ismi
     },
-    siteUrl: appConfig.ai?.openRouter?.siteUrl, // siteUrl ve appName referans için eklendi
-    appName: appConfig.ai?.openRouter?.appName,
+    siteUrl: appConfig.ai?.openRouter?.siteUrl || 'https://erp.mehmet-endustriyel.com', 
+    appName: appConfig.ai?.openRouter?.appName || 'METS AI Assistant',
   },
   // Diğer AI servisleri buraya eklenebilir (örn: local LLM)
 };
 
 // Aktif AI Servisini Seçme (örn: config dosyasından veya store üzerinden)
-const ACTIVE_AI_SERVICE = config.ai?.activeService || 'gemini'; // Varsayılan olarak gemini
+const ACTIVE_AI_SERVICE = config.ai?.activeService || 'openRouter'; // Varsayılan olarak OpenRouter (API keyi olduğundan)
 
 // --- GENEL API İSTEK FONKSİYONU ---
-const makeApiRequest = async (serviceName, endpoint, payload, method = 'POST') => {
+const makeApiRequest = async (serviceName, endpoint, payload, method = 'POST', options = {}) => {
+  // Cache anahtar oluştur
+  const cacheKey = `ai_${serviceName}_${endpoint}_${JSON.stringify(payload)}`;
+  
+  // Eğer cache'de varsa ve cache kullanıcı tarafından isteniyorsa önbelleği kullan
+  if (!options.skipCache) {
+    const cachedResponse = await cacheService.get(cacheKey, { namespace: 'ai' });
+    if (cachedResponse) {
+      console.log(`${serviceName} API yanıtı cache'den alındı.`);
+      return { ...cachedResponse, fromCache: true };
+    }
+  }
+  
+  // Çevrimdışı durumu kontrol et
+  if (!navigator.onLine) {
+    console.warn('Çevrimdışı durumdasınız. AI isteği yapılamadı.');
+    return simulateAIResponse(
+      payload.contents ? payload.contents[0]?.parts[0]?.text : payload.messages?.[payload.messages.length - 1]?.content,
+      serviceName, 
+      { offline: true }
+    );
+  }
+
   const serviceConfig = API_SERVICE_CONFIG[serviceName];
   if (!serviceConfig || !serviceConfig.apiKey || !serviceConfig.apiUrl) {
     console.warn(`${serviceName} API anahtarı veya URL bulunamadı. Demo mod kullanılıyor.`);
@@ -48,38 +72,77 @@ const makeApiRequest = async (serviceName, endpoint, payload, method = 'POST') =
     if (serviceConfig.appName) headers['X-Title'] = serviceConfig.appName;
   }
 
-  try {
-    const response = await axios({
-      method,
-      url: `${serviceConfig.apiUrl}/${endpoint}`,
-      data: payload,
-      headers,
-    });
+  // Yeniden deneme mekanizması için değişkenler
+  const maxRetries = config.api?.retryAttempts || 3;
+  let retryCount = 0;
 
-    // Yanıt formatları servise göre değişebilir, burada genel bir yapı varsayılıyor
-    // Gemini-benzeri yanıt
-    if (response.data.candidates?.[0]?.content?.parts?.[0]?.text) {
-      return {
-        text: response.data.candidates[0].content.parts[0].text,
-        success: true,
-        raw: response.data,
-        source: serviceName,
-      };
+  while (retryCount <= maxRetries) {
+    try {
+      console.log(`API isteği yapılıyor: ${serviceName}/${endpoint}`, { retry: retryCount });
+      const response = await axios({
+        method,
+        url: `${serviceConfig.apiUrl}/${endpoint}`,
+        data: payload,
+        headers,
+        timeout: config.api?.timeout || 30000,
+      });
+
+      // Yanıt formatları servise göre değişebilir, burada genel bir yapı varsayılıyor
+      let result;
+      
+      // Gemini-benzeri yanıt
+      if (response.data.candidates?.[0]?.content?.parts?.[0]?.text) {
+        result = {
+          text: response.data.candidates[0].content.parts[0].text,
+          success: true,
+          raw: response.data,
+          source: serviceName,
+          model: response.data.candidates[0]?.model || serviceConfig.modelName,
+          timestamp: new Date().toISOString(),
+        };
+      }
+      // OpenAI/OpenRouter-benzeri yanıt (chat completions)
+      else if (response.data.choices?.[0]?.message?.content) {
+        result = {
+          text: response.data.choices[0].message.content,
+          success: true,
+          raw: response.data,
+          source: serviceName,
+          model: response.data.model,
+          timestamp: new Date().toISOString(),
+        };
+      }
+      else {
+        throw new Error('API yanıtından metin alınamadı veya format tanınmıyor');
+      }
+      
+      // Başarılı yanıtı önbelleğe al
+      if (result.success && !options.skipCache) {
+        await cacheService.set(cacheKey, result, { 
+          namespace: 'ai',
+          ttl: options.cacheTTL || config.cache?.aiResponseTTL || 86400000, // 24 saat
+          sensitive: true
+        });
+      }
+      
+      return result;
+    } catch (error) {
+      // Rate limit veya sunucu hatası - yeniden dene
+      if (error.response && (error.response.status === 429 || error.response.status >= 500)) {
+        retryCount++;
+        if (retryCount <= maxRetries) {
+          // Exponential backoff - her denemede bekleme süresini artır
+          const delay = Math.min(1000 * Math.pow(2, retryCount), 10000);
+          console.warn(`${serviceName} API hata kodu: ${error.response.status}. ${retryCount}. deneme, ${delay}ms sonra tekrar denenecek.`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue; // Döngünün başına dön ve yeniden dene
+        }
+      }
+      
+      console.error(`${serviceName} API hatası (${retryCount} deneme sonrası):`, error.response?.data || error.message);
+      return simulateAIResponse(payload.contents ? payload.contents[0]?.parts[0]?.text : payload.messages?.[payload.messages.length - 1]?.content, serviceName, error.response?.data || error.message);
     }
-    // OpenAI/OpenRouter-benzeri yanıt (chat completions)
-    if (response.data.choices?.[0]?.message?.content) {
-      return {
-        text: response.data.choices[0].message.content,
-        success: true,
-        raw: response.data,
-        source: serviceName,
-      };
-    }
-    throw new Error('API yanıtından metin alınamadı veya format tanınmıyor');
-  } catch (error) {
-    console.error(`${serviceName} API hatası:`, error.response?.data || error.message);
-    return simulateAIResponse(payload.contents ? payload.contents[0]?.parts[0]?.text : payload.messages?.[payload.messages.length - 1]?.content, serviceName, error.response?.data || error.message);
-  }
+  } // while döngüsü sonu
 };
 
 // --- GEMINI ÖZEL FONKSİYONLARI ---
@@ -100,7 +163,7 @@ const geminiGenerateContent = async (prompt, options = {}) => {
       { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
     ],
   };
-  return makeApiRequest('gemini', `${API_SERVICE_CONFIG.gemini.modelName}:generateContent`, payload);
+  return makeApiRequest('gemini', `${API_SERVICE_CONFIG.gemini.modelName}:generateContent`, payload, 'POST', options);
 };
 
 const geminiChat = async (messages, options = {}) => {
@@ -119,21 +182,95 @@ const geminiChat = async (messages, options = {}) => {
     },
     safetySettings: config.ai?.geminiSafetySettings, // Yukarıdakiyle aynı
   };
-  return makeApiRequest('gemini', `${API_SERVICE_CONFIG.gemini.modelName}:generateContent`, payload);
+  return makeApiRequest('gemini', `${API_SERVICE_CONFIG.gemini.modelName}:generateContent`, payload, 'POST', options);
 };
 
 // --- OPENROUTER ÖZEL FONKSİYONLARI ---
 const openRouterChatCompletion = async (messages, options = {}) => {
-  const model = options.model || API_SERVICE_CONFIG.openRouter.defaultModels.chat;
+  // Modelimizi belirle - özel bir model belirtilmişse onu kullan, 
+  // yoksa kategoriye göre default model seç (technical sorgu için technical model vb.)
+  let model = options.model;
+  if (!model) {
+    // Mesaj içeriğine göre model seçimi yapmaya çalış
+    const lastUserMessage = messages.findLast(msg => msg.role === 'user')?.content || '';
+    if (lastUserMessage.toLowerCase().includes('teknik') || 
+        lastUserMessage.toLowerCase().includes('technical') || 
+        lastUserMessage.toLowerCase().includes('doküman') || 
+        lastUserMessage.toLowerCase().includes('3d model')) {
+      model = API_SERVICE_CONFIG.openRouter.defaultModels.technical; // Teknik konular için daha yetenekli model
+    } else if (options.type === 'instruct' || options.isInstruct) {
+      model = API_SERVICE_CONFIG.openRouter.defaultModels.instruct;
+    } else {
+      model = API_SERVICE_CONFIG.openRouter.defaultModels.chat;
+    }
+  }
+
+  // Sistem mesajının olup olmadığını kontrol et
+  const systemMessage = messages.find(msg => msg.role === 'system');
+  
+  // Eğer sistem mesajı yoksa ve config'de varsa ekle
+  if (!systemMessage && config.ai?.systemPrompt) {
+    messages.unshift({
+      role: 'system',
+      content: config.ai.systemPrompt
+    });
+  }
+
+  // OpenRouter için istek gövdesi hazırla
   const payload = {
     model: model,
     messages: messages.map(msg => ({ role: msg.role, content: msg.content })),
     temperature: options.temperature ?? config.ai?.openRouterGenerationConfig?.temperature ?? 0.7,
     max_tokens: options.maxTokens ?? config.ai?.openRouterGenerationConfig?.maxTokens ?? 2048,
     top_p: options.topP ?? config.ai?.openRouterGenerationConfig?.topP ?? 0.8,
-    // OpenRouter'a özel diğer parametreler eklenebilir (örn: stream, top_k vb.)
+    stream: options.stream === true, // Varsayılan olarak streaming devre dışı
   };
-  return makeApiRequest('openRouter', 'chat/completions', payload);
+  
+  // Multimodal mesaj içeriği var mı kontrol et (görsel içeren mesajlar)
+  const hasMultimodalContent = messages.some(msg => 
+    Array.isArray(msg.content) && msg.content.some(part => part.type === 'image_url')
+  );
+  
+  // Eğer multimodal içerik varsa ve seçilen model desteklemiyorsa, 
+  // otomatik olarak multimodal desteği olan bir modele geç
+  if (hasMultimodalContent && !model.includes('gemini')) {
+    console.log('Görsel içerikli mesaj algılandı, multimodal model seçiliyor.');
+    payload.model = 'google/gemini-2.5-pro-exp-03-25'; // Görsel destekli modele geç
+  }
+
+  return makeApiRequest('openRouter', 'chat/completions', payload, 'POST', options);
+};
+
+// Multimodal mesajlar için özel fonksiyon (görsel+metin)
+const openRouterMultimodalCompletion = async (text, imageUrls = [], options = {}) => {
+  // Görsel URL'leri kontrol et
+  if (!imageUrls || !imageUrls.length) {
+    return openRouterChatCompletion([{ role: 'user', content: text }], options);
+  }
+  
+  // Multimodal içerik formatı
+  const content = [
+    { type: 'text', text }
+  ];
+  
+  // Görselleri ekle
+  imageUrls.forEach(url => {
+    content.push({
+      type: 'image_url',
+      image_url: { url }
+    });
+  });
+  
+  // OpenRouter/OpenAI formatı için mesaj oluştur
+  const messages = [
+    { role: 'user', content }
+  ];
+  
+  // Multimodal mesajı gönder (model otomatik olarak uygun bir multimodal modele ayarlanacak)
+  return openRouterChatCompletion(messages, { 
+    ...options, 
+    model: 'google/gemini-2.5-pro-exp-03-25' // Görsel destekli model
+  });
 };
 
 // --- DEMO MODU İÇİN YANIT SİMÜLASYONU ---
@@ -241,7 +378,7 @@ const simulateAIResponse = async (prompt, service = 'METS AI Asistan', errorInfo
     
     // Diğer sorgulamalar
     else {
-      responseText = `"${prompt.substring(0, 60)}..." sorunuz için yanıt: MehmetEndüstriyelTakip sisteminde bu konuyla ilgili veri analizi yapılıyor. Daha spesifik bir soru sorarak (örn: belirli bir sipariş durumu, stok bilgisi veya üretim planı) daha net yanıtlar alabilirim. Yardımcı olabileceğim başka bir konu var mı?`;
+      responseText = `"${prompt.substring(0, 60)}..." sorunuz için yanıt: MehmetEndustriiyelTakip sisteminde bu konuyla ilgili veri analizi yapılıyor. Daha spesifik bir soru sorarak (örn: belirli bir sipariş durumu, stok bilgisi veya üretim planı) daha net yanıtlar alabilirim. Yardımcı olabileceğim başka bir konu var mı?`;
     }
   }
 
@@ -425,7 +562,6 @@ export const aiService = {
     } else {
       // Eğer geçmiş yoksa, sistem mesajı ve kullanıcı mesajı ile başlat
       // Bu sistem mesajı, AI'ın rolünü ve bağlamını belirler.
-      // Projenizin gereksinimlerine göre bu mesajı özelleştirin.
       messages.push({
         role: 'system',
         content: config.ai?.systemPrompt || 'Sen MehmetEndustriyelTakip uygulaması için bir asistansın. Üretim, stok, siparişler ve genel fabrika süreçleri hakkında bilgi verebilirsin. Sorulara net, kısa ve profesyonel cevaplar ver.'
@@ -433,13 +569,79 @@ export const aiService = {
       messages.push({ role: 'user', content: currentPrompt });
     }
     
+    // Çevrimdışı durumu kontrol et
+    const isOffline = !navigator.onLine;
+    
+    // Eğer çevrimdışıysak ve cache'den yanıt bulunamazsa, bir işlem kuyruğa ekleyin veya demo yanıtı kullanın
+    if (isOffline) {
+      console.log('Çevrimdışı durum tespit edildi. Cache yanıtı aranıyor...');
+      
+      // Basit bir hash oluşturarak cache'de aramak için anahtar oluşturuyoruz
+      const lastMessage = messages[messages.length - 1].content;
+      const cacheKey = `offline_msg_${lastMessage.slice(0, 50).replace(/\s+/g, '_')}`;
+      
+      // Cache'den yanıt al
+      const cachedResponse = await cacheService.get(cacheKey, { 
+        namespace: 'ai_offline',
+        params: { messageLength: lastMessage.length } 
+      });
+      
+      if (cachedResponse) {
+        console.log('Çevrimdışı mod: Cache yanıtı bulundu.');
+        return {
+          ...cachedResponse,
+          fromCache: true,
+          offline: true
+        };
+      }
+      
+      // Cache'de yanıt yoksa demo yanıtı oluştur
+      console.log('Çevrimdışı mod: Cache yanıtı bulunamadı, demo yanıtı üretiliyor.');
+      const demoResponse = simulateAIResponse(currentPrompt, 'METS AI Offline', { offline: true });
+      
+      // Demo yanıtı cache'e kaydet (çevrimiçi olduğumuzda gerçek yanıtla güncellenebilir)
+      await cacheService.set(cacheKey, demoResponse, { 
+        namespace: 'ai_offline',
+        ttl: 86400000 * 7, // 7 gün 
+        params: { messageLength: lastMessage.length }
+      });
+      
+      return demoResponse;
+    }
+    
     // Aktif servise göre isteği yönlendir
     if (ACTIVE_AI_SERVICE === 'gemini') {
-      // Gemini için, eğer sadece tek bir prompt varsa generateContent, yoksa chat kullanılabilir.
-      // Şimdilik tutarlılık için hep chat (yani generateContent altında contents array) kullanalım.
-      return geminiChat(messages, options);
+      const response = await geminiChat(messages, options);
+      
+      // Başarılı yanıtı önbelleğe al (çevrimdışı kullanım için)
+      if (response && response.success) {
+        const lastMessage = messages[messages.length - 1].content;
+        const cacheKey = `offline_msg_${lastMessage.slice(0, 50).replace(/\s+/g, '_')}`;
+        
+        await cacheService.set(cacheKey, response, { 
+          namespace: 'ai_offline',
+          ttl: 86400000 * 7, // 7 gün
+          params: { messageLength: lastMessage.length }
+        });
+      }
+      
+      return response;
     } else if (ACTIVE_AI_SERVICE === 'openRouter') {
-      return openRouterChatCompletion(messages, options);
+      const response = await openRouterChatCompletion(messages, options);
+      
+      // Başarılı yanıtı önbelleğe al (çevrimdışı kullanım için)
+      if (response && response.success) {
+        const lastMessage = messages[messages.length - 1].content;
+        const cacheKey = `offline_msg_${lastMessage.slice(0, 50).replace(/\s+/g, '_')}`;
+        
+        await cacheService.set(cacheKey, response, { 
+          namespace: 'ai_offline',
+          ttl: 86400000 * 7, // 7 gün
+          params: { messageLength: lastMessage.length }
+        });
+      }
+      
+      return response;
     } else {
       // Desteklenmeyen servis veya demo modu
       console.warn(`Aktif AI servisi (${ACTIVE_AI_SERVICE}) desteklenmiyor veya yapılandırılmamış. Demo yanıtı kullanılıyor.`);
@@ -449,19 +651,66 @@ export const aiService = {
 
   // Tek seferlik sorgular için (sohbet geçmişi olmadan)
   ask: async (prompt, options = {}) => {
+    // Çevrimdışı durumu kontrol et
+    const isOffline = !navigator.onLine;
+    
+    if (isOffline) {
+      console.log('Çevrimdışı durum tespit edildi. Cache yanıtı aranıyor...');
+      
+      // Basit bir hash oluştur
+      const cacheKey = `offline_ask_${prompt.slice(0, 50).replace(/\s+/g, '_')}`;
+      
+      // Cache'den yanıt al
+      const cachedResponse = await cacheService.get(cacheKey, { 
+        namespace: 'ai_offline',
+        params: { promptLength: prompt.length } 
+      });
+      
+      if (cachedResponse) {
+        console.log('Çevrimdışı mod: Cache yanıtı bulundu.');
+        return {
+          ...cachedResponse,
+          fromCache: true,
+          offline: true
+        };
+      }
+      
+      // Cache'de yanıt yoksa demo yanıtı kullan
+      console.log('Çevrimdışı mod: Cache yanıtı bulunamadı, demo yanıtı üretiliyor.');
+      return simulateAIResponse(prompt, 'METS AI Offline', { offline: true });
+    }
+    
+    let response;
+    
     if (ACTIVE_AI_SERVICE === 'gemini') {
-      return geminiGenerateContent(prompt, options);
+      response = await geminiGenerateContent(prompt, options);
     } else if (ACTIVE_AI_SERVICE === 'openRouter') {
       // OpenRouter için tek seferlik sorgu da chat/completions ile yapılabilir,
       // sadece messages array'i tek bir kullanıcı mesajı içerir.
       const messages = [
-        { role: 'system', content: config.ai?.systemPrompt || 'Kısa ve öz cevaplar ver.' }, // Daha genel bir sistem mesajı
+        { role: 'system', content: config.ai?.systemPrompt || 'Kısa ve öz cevaplar ver.' },
         { role: 'user', content: prompt }
       ];
-      return openRouterChatCompletion(messages, { ...options, model: options.model || API_SERVICE_CONFIG.openRouter.defaultModels.instruct });
+      response = await openRouterChatCompletion(messages, { 
+        ...options, 
+        model: options.model || API_SERVICE_CONFIG.openRouter.defaultModels.instruct 
+      });
     } else {
-      return simulateAIResponse(prompt, ACTIVE_AI_SERVICE);
+      response = simulateAIResponse(prompt, ACTIVE_AI_SERVICE);
     }
+    
+    // Başarılı yanıtı önbelleğe al (çevrimdışı kullanım için)
+    if (response && response.success) {
+      const cacheKey = `offline_ask_${prompt.slice(0, 50).replace(/\s+/g, '_')}`;
+      
+      await cacheService.set(cacheKey, response, { 
+        namespace: 'ai_offline',
+        ttl: 86400000 * 7, // 7 gün
+        params: { promptLength: prompt.length }
+      });
+    }
+    
+    return response;
   },
   
   // Yapılandırmayı ve durumu kontrol etmek için yardımcı fonksiyon
@@ -488,6 +737,37 @@ export function useAiService() {
   // Chat history state
   const history = useStorage('ai-chat-history', []);
   const isProcessing = ref(false);
+  const isOffline = ref(!navigator.onLine);
+  
+  // Çevrimiçi/çevrimdışı durumunu izle
+  const setupNetworkListeners = () => {
+    const handleOnline = () => {
+      isOffline.value = false;
+      console.log('AI servisi: Çevrimiçi duruma geçildi');
+    };
+    
+    const handleOffline = () => {
+      isOffline.value = true;
+      console.log('AI servisi: Çevrimdışı duruma geçildi');
+    };
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    // Temizleme fonksiyonu
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  };
+  
+  // Ağ dinleyicilerini kur
+  const cleanup = setupNetworkListeners();
+  
+  // Vue component unmounted olduğunda temizleme yap
+  if (typeof onUnmounted === 'function') {
+    onUnmounted(cleanup);
+  }
   
   // Supported AI models configuration
   const supportedModels = {
@@ -558,7 +838,9 @@ export function useAiService() {
           role: 'assistant',
           content: response.text,
           timestamp: new Date(),
-          source: response.source
+          source: response.source,
+          fromCache: !!response.fromCache,
+          offline: !!response.offline
         });
       }
       
@@ -573,6 +855,41 @@ export function useAiService() {
       });
     } finally {
       isProcessing.value = false;
+    }
+  };
+  
+  // Çevrimdışı iken cache verilerini temizle
+  const clearOfflineCache = async () => {
+    try {
+      await cacheService.clear('ai_offline');
+      console.log('Çevrimdışı AI cache temizlendi');
+      return true;
+    } catch (error) {
+      console.error('Çevrimdışı cache temizleme hatası:', error);
+      return false;
+    }
+  };
+  
+  // AI cache istatistiklerini al
+  const getAICacheStats = () => {
+    try {
+      const stats = cacheService.getStats();
+      const aiStats = stats.byNamespace?.ai || { size: 0, hits: 0, misses: 0, entries: 0 };
+      const offlineStats = stats.byNamespace?.ai_offline || { size: 0, hits: 0, misses: 0, entries: 0 };
+      
+      return {
+        ai: aiStats,
+        offline: offlineStats,
+        total: {
+          size: aiStats.size + offlineStats.size,
+          hits: aiStats.hits + offlineStats.hits,
+          misses: aiStats.misses + offlineStats.misses,
+          entries: aiStats.entries + offlineStats.entries
+        }
+      };
+    } catch (error) {
+      console.error('AI cache istatistikleri alınamadı:', error);
+      return { ai: {}, offline: {}, total: {} };
     }
   };
   
@@ -633,6 +950,11 @@ export function useAiService() {
     supportedModels,
     switchModel,
     getCurrentModel,
+    
+    // Offline capabilities
+    isOffline,
+    clearOfflineCache,
+    getAICacheStats,
     
     // System data interfaces
     getSystemData,

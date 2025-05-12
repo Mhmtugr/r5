@@ -4,12 +4,26 @@
  * Bu dosya, tüm uygulama çapındaki yapılandırma ayarlarını merkezi olarak yönetir.
  * Orta ölçekli sanayi üretim süreçleri için gerekli tüm parametreleri içerir.
  * 
- * @version 2.0.0
+ * @version 2.1.0
  * @author MehmetMETS Team
+ * @updated 2025-05-12 - AI entegrasyonu ve önbellek sistemi eklendi
  */
 
 // Ortam değişkenlerini Vite ile al
 const env = import.meta.env;
+
+// API anahtarlarının tanımlı olup olmadığını kontrol et
+const checkApiKey = (key, serviceName) => {
+  if (!key) {
+    console.warn(`${serviceName} API anahtarı tanımlanmamış. Bu servis kullanılamayacak.`);
+    return null;
+  }
+  if (key.startsWith('YOUR_') || key === 'xxx') {
+    console.warn(`${serviceName} API anahtarı varsayılan değer. Bu servis kullanılamayacak.`);
+    return null;
+  }
+  return key;
+};
 
 /**
  * Uygulama genelinde kullanılan konfigürasyon ayarları
@@ -28,7 +42,6 @@ const appConfig = {
     baseUrl: env.BASE_URL || '/',
     buildDate: new Date().toISOString(),
   },
-
   /**
    * API ve Sunucu Bağlantı Ayarları
    */
@@ -37,9 +50,34 @@ const appConfig = {
     timeout: parseInt(env.VITE_API_TIMEOUT || '30000'),
     useMockData: env.VITE_USE_DEMO_MODE === 'true' || env.MODE === 'development',
     retryAttempts: parseInt(env.VITE_API_RETRY_ATTEMPTS || '3'),
+    retryDelay: parseInt(env.VITE_API_RETRY_DELAY || '1000'),
     authHeaderName: 'Authorization',
   },
-
+  
+  /**
+   * Önbellekleme (Cache) Ayarları
+   * Performans ve API kullanım limitlerini optimize etmek için
+   */
+  cache: {
+    // Genel önbellek ayarları
+    enabled: env.VITE_CACHE_ENABLED !== 'false', // Varsayılan olarak aktif
+    maxItems: parseInt(env.VITE_MAX_CACHE_ITEMS || '100'),
+    expiryHours: parseInt(env.VITE_CACHE_EXPIRY_HOURS || '24'),
+    
+    // AI sorguları için önbellek ayarları
+    aiCache: {
+      enabled: env.VITE_AI_CACHE_ENABLED !== 'false', // Varsayılan olarak aktif
+      maxItems: parseInt(env.VITE_AI_CACHE_MAX_ITEMS || '50'),
+      expiryHours: parseInt(env.VITE_AI_CACHE_EXPIRY_HOURS || '24'),
+    },
+    
+    // Teknik dökümanlar için önbellek ayarları
+    documentCache: {
+      enabled: env.VITE_DOCUMENT_CACHE_ENABLED !== 'false', // Varsayılan olarak aktif
+      maxItems: parseInt(env.VITE_DOCUMENT_CACHE_MAX_ITEMS || '30'),
+      expiryHours: parseInt(env.VITE_DOCUMENT_CACHE_EXPIRY_HOURS || '48'),
+    },
+  },
   /**
    * Yapay Zeka Servisleri Ayarları
    * METS uygulamasının en önemli farklılaştırıcı özelliği
@@ -48,21 +86,35 @@ const appConfig = {
     // Aktif servis seçimi (gemini, openRouter, local)
     activeService: env.VITE_ACTIVE_AI_SERVICE || 'gemini',
     
+    // AI Sistem Yapılandırma
+    systemPrompt: 'Sen MehmetEndustriyelTakip uygulaması için bir asistansın. Üretim, stok, siparişler ve genel fabrika süreçleri hakkında bilgi verebilirsin. Sorulara net, kısa ve profesyonel cevaplar ver.',
+    
+    // AI Failover yapılandırması - birincil servis başarısız olduğunda ikinci servise geç
+    failover: {
+      enabled: env.VITE_AI_FAILOVER_ENABLED !== 'false', // Varsayılan olarak aktif
+      maxRetries: parseInt(env.VITE_AI_FAILOVER_MAX_RETRIES || '3'),
+      primaryService: env.VITE_AI_FAILOVER_PRIMARY || 'gemini',
+      secondaryService: env.VITE_AI_FAILOVER_SECONDARY || 'openRouter',
+    },
+    
     // Chatbot Ayarları
     chatbot: {
       name: 'METS AI Asistan',
       icon: '/assets/icons/ai-assistant.svg',
       welcomeMessage: 'METS AI Asistan ile üretim ve teknik bilgilere erişebilirsiniz. Size nasıl yardımcı olabilirim?',
       defaultPlaceholder: 'Bir soru sorun veya sipariş durumu sorgulayın...',
+      maxHistoryItems: parseInt(env.VITE_AI_MAX_HISTORY_ITEMS || '10'),
+      showModelSelector: env.VITE_AI_SHOW_MODEL_SELECTOR !== 'false',
     },
     
     // Gemini Servisi
     gemini: {
-      apiKey: env.VITE_GEMINI_API_KEY,
+      apiKey: checkApiKey(env.VITE_GEMINI_API_KEY, 'Gemini'),
       apiUrl: 'https://generativelanguage.googleapis.com/v1beta/models',
       modelName: env.VITE_AI_MODEL_NAME || 'gemini-1.5-pro',
       maxTokens: parseInt(env.VITE_GEMINI_MAX_TOKENS || '8192'),
       temperature: parseFloat(env.VITE_GEMINI_TEMPERATURE || '0.7'),
+      timeout: parseInt(env.VITE_GEMINI_TIMEOUT || '60000'),
       promptPrefixes: {
         technical: 'Mehmet Endüstriyel orta gerilim hücre üreticisi bir firmadır. Aşağıdaki teknik soruya uzman elektrik mühendisi olarak yanıt ver:',
         planning: 'Sen bir üretim planlama uzmanısın. Şu soruya üretim akışı optimizasyonu perspektifiyle cevap ver:',
@@ -72,7 +124,7 @@ const appConfig = {
 
     // OpenRouter Servisi
     openRouter: {
-      apiKey: env.VITE_OPENROUTER_API_KEY,
+      apiKey: checkApiKey(env.VITE_OPENROUTER_API_KEY, 'OpenRouter'),
       apiUrl: 'https://openrouter.ai/api/v1',
       defaultModels: {
         chat: env.VITE_OPENROUTER_CHAT_MODEL || 'openai/gpt-3.5-turbo',
@@ -82,6 +134,9 @@ const appConfig = {
       siteUrl: env.VITE_SITE_URL || 'https://erp.mehmet-endustriyel.com',
       appName: 'METS AI Assistant',
       maxTokens: parseInt(env.VITE_OPENROUTER_MAX_TOKENS || '4096'),
+      temperature: parseFloat(env.VITE_OPENROUTER_TEMPERATURE || '0.7'),
+      timeout: parseInt(env.VITE_OPENROUTER_TIMEOUT || '60000'),
+      topP: parseFloat(env.VITE_OPENROUTER_TOP_P || '0.8'),
     },
     
     // Yerel AI Model Servisi (ilerideki uygulamalar için)
@@ -90,6 +145,7 @@ const appConfig = {
       apiUrl: env.VITE_LOCAL_MODEL_URL || 'http://localhost:8080/api',
       modelPath: env.VITE_LOCAL_MODEL_PATH,
       contextWindow: parseInt(env.VITE_LOCAL_MODEL_CONTEXT_WINDOW || '4096'),
+      timeout: parseInt(env.VITE_LOCAL_MODEL_TIMEOUT || '30000'),
     },
     
     // Dosya ve Dökümantasyon AI İşleme
