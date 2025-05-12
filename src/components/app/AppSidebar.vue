@@ -284,21 +284,17 @@ const handleSidebarToggle = () => {
   }
 };
 
-// Ekran boyutu değişikliklerini izle
-const handleResize = () => {
-  // Küçük ekranlar için sidebar'ı otomatik kapat
-  if (window.innerWidth < 992 && !props.isCollapsed) {
-    emit('toggle-sidebar');
-  }
-};
+// Ekran boyutu değişikliklerini izle - bu artık DefaultLayout'dan yönetiliyor
+// const handleResize = () => {
+//   // Küçük ekranlar için sidebar'ı otomatik kapat - bu işlem DefaultLayout'da yapılıyor
+//   if (window.innerWidth < 992 && !props.isCollapsed) {
+//     emit('toggle-sidebar');
+//   }
+// };
 
 // Olay dinleyicileri
 onMounted(() => {
   eventBus.on(Events.UI_SIDEBAR_TOGGLE, handleSidebarToggle);
-  
-  // Sayfa ilk yüklendiğinde ve ekran boyutu değiştiğinde
-  window.addEventListener('resize', handleResize);
-  handleResize();
   
   // Aktif rotaya bağlı olarak menü elemanını aç
   handleSidebarToggle();
@@ -306,7 +302,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   eventBus.off(Events.UI_SIDEBAR_TOGGLE, handleSidebarToggle);
-  window.removeEventListener('resize', handleResize);
 });
 
 // Route değişikliklerini izle ve ilgili menü elemanını aç
@@ -327,8 +322,9 @@ watch(() => route.path, handleSidebarToggle);
   background-color: var(--primary-color);
   color: var(--sidebar-text);
   border-right: 1px solid rgba(0, 0, 0, 0.1);
-  z-index: 1000;
-  transition: all 0.3s ease;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+  z-index: 1030;
+  transition: transform 0.3s ease, width 0.3s ease;
   
   &.collapsed {
     width: 70px;
@@ -435,6 +431,7 @@ watch(() => route.path, handleSidebarToggle);
             text-decoration: none;
             border-radius: 0.25rem;
             margin: 0 0.5rem;
+            transition: background-color 0.2s, color 0.2s;
             
             &:hover {
               background-color: var(--sidebar-hover-bg);
@@ -442,9 +439,9 @@ watch(() => route.path, handleSidebarToggle);
             }
             
             &.active {
-              background-color: rgba(255, 255, 255, 0.1);
+              background-color: rgba(255, 255, 255, 0.15);
               color: var(--sidebar-text-active);
-              font-weight: 500;
+              font-weight: 600;
             }
             
             .nav-icon {
@@ -591,23 +588,8 @@ watch(() => route.path, handleSidebarToggle);
   }
 }
 
-// Variables for sidebar theme
-:root {
-  --bg-sidebar: #ffffff;
-  --primary-light: rgba(13, 110, 253, 0.15);
-  --primary: #0d6efd;
-  --danger: #dc3545;
-  --warning: #ffc107;
-  --success: #198754;
-  --dark: #212529;
-  --bg-button: #f8f9fa;
-  --bg-button-hover: #e9ecef;
-  --bg-hover: #f8f9fa;
-  --text-primary: #212529;
-  --text-secondary: #6c757d;
-  --text-muted: #adb5bd;
-  --border-color: #e9ecef;
-}
+// Bu değişkenler artık src/styles/base/_variables.scss dosyasında merkezi olarak tanımlanıyor
+// Burada tekrar tanımlamak yerine ana stil dosyasındaki değişkenleri kullanıyoruz
 
 // Dark mode overrides
 body.dark-mode {
@@ -625,34 +607,22 @@ body.dark-mode {
 
 @media (max-width: 992px) {
   .app-sidebar {
-    transform: translateX(-100%);
-    box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+    width: 250px !important; // Mobil görünümde daraltma yok, tam genişlik
+    transform: translateX(-100%); // Varsayılan olarak gizli
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
     
     &.collapsed {
-      transform: translateX(0);
-      width: 250px;
+      transform: translateX(0); // Collapsed durumu mobilde gösterme anlamına gelir (ters mantık)
       
       .sidebar-header {
         padding: 0 1rem;
         justify-content: space-between;
-        
-        .logo {
-          justify-content: flex-start;
-          
-          img {
-            margin-right: 0.5rem;
-          }
-          
-          span {
-            display: block;
-          }
-        }
       }
       
       .nav-text,
       .nav-badge,
       .dropdown-icon {
-        display: block;
+        display: block !important; // Her zaman göster
       }
       
       .nav-link {
@@ -662,6 +632,12 @@ body.dark-mode {
         .nav-icon {
           margin-right: 10px;
         }
+      }
+      
+      // Logo metni ve diğer öğelerin görünürlüğünü düzelt
+      .logo span,
+      .nav-dropdown-items {
+        display: block !important;
       }
     }
   }

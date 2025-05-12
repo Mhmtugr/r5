@@ -6,8 +6,16 @@
   color: var(--sidebar-text); // CSS değişkeni kullanıldı
   height: 100vh;
   position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
   padding-top: 0;
   width: vars.$sidebar-width; // SASS değişkeni kullanıldı
+  z-index: 1030; // Önemli: AppHeader gibi diğer elemanların üzerinde olması için
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+  overflow-y: auto;
   transition: all 0.3s ease; // Geçiş eklendi
 
   .nav-link {

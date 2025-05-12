@@ -52,14 +52,27 @@
       width: 100% !important;
     }
     
-    &:not(.sidebar-collapsed) .app-sidebar {
-      transform: translateX(-100%);
+    .app-sidebar {
+      transform: translateX(-100%); // Mobilde varsayılan olarak gizli
+      z-index: 1040; // AppHeader'ın üzerinde
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+      width: 250px !important; // Mobilde her zaman tam genişlikte
+      
+      &.collapsed {
+        transform: translateX(0); // Mobilde açıldığında göster
+      }
     }
     
-    &.sidebar-collapsed .app-sidebar {
-      transform: translateX(0);
-      z-index: 1050;
-      box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
-    }
+    // Sidebar açıkken overlay göster
+    .main-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.5);
+      z-index: 1025;  // Sidebar'dan düşük, diğer içerikten yüksek
+    }    // Sidebar mobile davranışını tek yerde tanımlıyoruz
+    // (yukardaki kodları kabul et, bu çakışan satırları sil)
   }
 }

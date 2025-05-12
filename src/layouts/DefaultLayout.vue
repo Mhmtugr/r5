@@ -1,6 +1,7 @@
-<template>  <div class="app-container" :class="{ 'sidebar-collapsed': isSidebarCollapsed, 'dark-mode': isDarkMode }">
+<template>
+  <div class="app-container" :class="{ 'sidebar-collapsed': isSidebarCollapsed, 'dark-mode': isDarkMode }">
     <AppSidebar :is-collapsed="isSidebarCollapsed" @toggle-sidebar="toggleSidebar" />
-    <div v-if="!isSidebarCollapsed && window.innerWidth < 992" class="main-overlay" @click="toggleSidebar"></div>
+    <div v-if="!isSidebarCollapsed && windowSize.width < 992" class="main-overlay" @click="toggleSidebar"></div>
     <div class="main-content">
       <AppHeader 
         :username="username" 
@@ -64,13 +65,20 @@ const username = computed(() => {
 // Dark mode state
 const isDarkMode = ref(localStorage.getItem('darkMode') === 'true');
 
-// Sidebar durumu - mobilde otomatik kapalı başla
-const isSidebarCollapsed = ref(localStorage.getItem('sidebarCollapsed') === 'true' || window.innerWidth < 992);
-// Mobil için pencere boyutunu takip et
+// Pencere boyutu
 const windowSize = ref({
-  width: window.innerWidth,
-  height: window.innerHeight
+  width: typeof window !== 'undefined' ? window.innerWidth : 992,
+  height: typeof window !== 'undefined' ? window.innerHeight : 768
 });
+
+// Sidebar durumu - masaüstünde localStorage'dan, mobilde her zaman başlangıçta kapalı
+const getInitialSidebarState = () => {
+  if (windowSize.value.width < 992) {
+    return true; // Mobilde her zaman başlangıçta kapalı (collapsed=true)
+  }
+  return localStorage.getItem('sidebarCollapsed') === 'true'; // Masaüstünde kullanıcı tercihi
+};
+const isSidebarCollapsed = ref(getInitialSidebarState());
 
 // Modal'ı kapat
 const closeAIChatModal = () => {
@@ -80,7 +88,10 @@ const closeAIChatModal = () => {
 // Toggle fonksiyonları
 const toggleSidebar = () => {
   isSidebarCollapsed.value = !isSidebarCollapsed.value;
-  localStorage.setItem('sidebarCollapsed', isSidebarCollapsed.value);
+  // Sadece masaüstünde tercihi kaydet
+  if (windowSize.value.width >= 992) {
+    localStorage.setItem('sidebarCollapsed', isSidebarCollapsed.value.toString());
+  }
 };
 
 const toggleDarkMode = () => {
@@ -110,23 +121,45 @@ provide('toggleSidebar', toggleSidebar);
 provide('isDarkMode', isDarkMode);
 provide('toggleDarkMode', toggleDarkMode);
 
+// Pencere boyutu değişikliğini işleyen fonksiyon
+const handleWindowResize = () => {
+  if (typeof window === 'undefined') return;
+  
+  const newWidth = window.innerWidth;
+  const newHeight = window.innerHeight;
+  
+  // Ekran boyutu değiştiğinde sidebar durumunu kontrol et
+  if (newWidth < 992) {
+    // Mobil görünüme geçildiğinde sidebar'ı kapat (collapsed=true)
+    isSidebarCollapsed.value = true;
+  } else if (windowSize.value.width < 992 && newWidth >= 992) {
+    // Mobil görünümden masaüstüne geçildiğinde localStorage'dan kullanıcı tercihini al
+    const savedState = localStorage.getItem('sidebarCollapsed');
+    if (savedState !== null) {
+      isSidebarCollapsed.value = savedState === 'true';
+    } else {
+      // Varsayılan tercihi kullan (masaüstünde açık)
+      isSidebarCollapsed.value = false;
+    }
+  }
+  
+  // Pencere boyutunu güncelle
+  windowSize.value = {
+    width: newWidth,
+    height: newHeight
+  };
+};
+
 // Sayfa yüklendiğinde dark mode durumunu kontrol et
 onMounted(() => {
   // Sayfa yüklenirken dark mode ayarı
   document.body.classList.toggle('dark-mode', isDarkMode.value);
   
-  // Window resize olayını izle
-  window.addEventListener('resize', () => {
-    windowSize.value = {
-      width: window.innerWidth,
-      height: window.innerHeight
-    };
-    
-    // Ekran boyutu değiştiğinde sidebar durumunu kontrol et
-    if (window.innerWidth < 992) {
-      isSidebarCollapsed.value = true;
-    }
-  });
+  // Window resize olayını izle (tarayıcı tarafında çalıştığından emin ol)
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', handleWindowResize);
+    handleWindowResize(); // İlk yükleme durumunda çalıştır
+  }
   
   // Auth durumunu kontrol et, değilse ve development modunda ise otomatik login
   if (!isAuthenticated.value) {
@@ -154,12 +187,9 @@ watch(
 
 // Event listener'ları temizle
 onUnmounted(() => {
-  window.removeEventListener('resize', () => {
-    windowSize.value = {
-      width: window.innerWidth,
-      height: window.innerHeight
-    };
-  });
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('resize', handleWindowResize);
+  }
 });
 </script>
 
@@ -171,8 +201,9 @@ $sidebar-collapsed-width: 70px;
 .app-container {
   display: flex;
   min-height: 100vh;
-  overflow: hidden;
+  overflow-x: hidden;
   background-color: var(--bg-content, #f5f7fa);
+  position: relative;
   
   .main-content {
     flex: 1;
@@ -197,11 +228,14 @@ $sidebar-collapsed-width: 70px;
       }
     }
   }
-
   &.sidebar-collapsed {
     .main-content {
       margin-left: $sidebar-collapsed-width;
       width: calc(100% - #{$sidebar-collapsed-width}); /* Update width when collapsed */
+    }
+    
+    .app-sidebar {
+      width: $sidebar-collapsed-width;
     }
   }
 }
